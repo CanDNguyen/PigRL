@@ -77,12 +77,15 @@ class ArcherEnv(object):
         obs = json.loads(obs_text)
         recent_arrow_info = None
         target_info = None
+        dis = 0
         #get most recent arrow's pos
         
-        #print(obs)
+        print("Observation:",obs)
+        print()
+        print()
         if obs[u'entities'][-1]['name'] == u'Arrow':
             recent_arrow_info = obs[u'entities'][-1]
-            #print("{}:({}, {})".format(recent_arrow_info[u'name'],recent_arrow_info[u'x'],recent_arrow_info[u'z']))
+            print("{}:({}, {})".format(recent_arrow_info[u'name'],recent_arrow_info[u'x'],recent_arrow_info[u'z']))
      
         for info in obs[u'entities']:
             if info[u'name'] == u'Pig':
@@ -149,8 +152,8 @@ class ArcherEnv(object):
 #                 random_horizontal_degree = random.randint(0,90)
 #                 random_power = random.randint(2,10) 
 
-            random_vertical_degree = random.randint(0,90)
-            random_horizontal_degree = random.randint(0,180)
+            random_vertical_degree = random.randint(0,1)
+            random_horizontal_degree = random.randint(10,30)
             random_power = random.randint(2,10) 
             self.action = self.action_selection[random_action]
             self.current_state = "{}:{}:{}".format(random_vertical_degree,random_horizontal_degree,random_power)
@@ -246,7 +249,6 @@ def drawrailline(x1, z1, x2, z2, y):
     #return redstone_line + rail_line
     #return rail_line
     return redstone_line
-
 def drawblock(x, y, z):
     ''' Draw a corner piece of rail '''
     shape = ""
@@ -300,7 +302,7 @@ missionXML='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
                       <DrawEntity x="0" y="57" z="0" xVel="0" yVel="0" zVel="-1" type="MinecartRideable"/>
                       <DrawEntity x="0" y="57" z="0" type="Pig"/>
                   </DrawingDecorator>
-                  <ServerQuitFromTimeUp timeLimitMs="300000"/>
+                  <ServerQuitFromTimeUp timeLimitMs="15000"/>
                   <ServerQuitWhenAnyAgentFinishes/>
                 </ServerHandlers>
               </ServerSection>
