@@ -29,7 +29,7 @@ Inside __init__:
    we store the agent's states and actions into dictionaries 
    we will develop value functions for the later milestone
    
-Inside updateQTable:
+Inside <updateQTable>:
    Passing the current reward and obseravtion to calculate the reward of each state
    Updating the QTable. 
    Our reward function is calculated based on distance formula.
