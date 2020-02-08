@@ -19,3 +19,32 @@ How to run our Milestone 1:<br>
 ## Our Milestone 1 Walkthough GIF
 
 <img src="http://g.recordit.co/Y92Lp7Sx3i.gif" width=450><br>
+
+
+## Class ArcherEnv <An environment class> ##
+
+Inside __init__:
+   we define our actions as: "left-up","left-down","right-up","right-down","power"
+   Initialize a Qtable for storing rewards.
+   we store the agent's states and actions into dictionaries 
+   we will develop value functions for the later milestone
+   
+Inside updateQTable:
+   Passing the current reward and obseravtion to calculate the reward of each state
+   Updating the QTable. 
+   Our reward function is calculated based on distance formula.
+   
+Inside __convert_degree__:
+   this method will recevie degrees and power that are chosen by the agent.
+   It converts these numbers and used in time.sleep() function to control how long each command 
+   will be exectuing.
+
+Inisde make_action:
+   this function receive the observation and apply policy on the agent's behavior of selecting actions.
+   
+turn_up_down, turn_left_right, and execute_action:
+   execute actions.
+   
+Inside run:
+   this function will start running the mission and assign actions to the agent.
+
