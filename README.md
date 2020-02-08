@@ -3,4 +3,4 @@ Malmo platform, is to train an agent to be proficient with Minecraft’s bow and
 
 ## Our Milestone 1 Walkthough GIF
 
-<img src="http://g.recordit.co/853ki97zcE.gif" width=450><br>
+<img src="http://g.recordit.co/s7oSFHGfdv.gif" width=450><br>
