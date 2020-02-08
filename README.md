@@ -12,7 +12,8 @@ How to run our Milestone 1:<br>
    cd MalmoPlatform/Minecraft/<br>
    ./launchClient.sh (Mac)<br>
    launchClient.bat (Win)<br>
-   cd MalmoPlatform/Python_Examples/Milestone1.py<br>
+   cd MalmoPlatform/Python_Examples/<br>
+   python3 Milestone1.py<br>
    
 
 ## Our Milestone 1 Walkthough GIF
