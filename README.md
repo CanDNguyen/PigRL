@@ -47,4 +47,7 @@ How to run our Milestone 1:<br>
    
 * Inside __run__:
    this function will start running the mission and assign actions to the agent.
+   
+## Project Website
+https://candnguyen.github.io/PigRL/
 
