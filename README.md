@@ -18,7 +18,7 @@ How to run our Milestone 1:<br>
 
 ## Our Milestone 1 Walkthough GIF
 
-<img src="http://g.recordit.co/GmFVp7HUCO.gif" width=450><br>
+<img src="http://g.recordit.co/Wi2hxi51jF.gif" width=450><br>
 
 
 ## Class ArcherEnv <An environment class> 
