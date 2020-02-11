@@ -31,7 +31,7 @@ import logging
 import numpy as np
 import math
 from pickle import NONE
-
+from collections import defaultdict
 
 if sys.version_info[0] == 2:
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)  # flush print output immediately
@@ -39,8 +39,15 @@ else:
     import functools
     print = functools.partial(print, flush=True)
     
-Policy = ["random","greedy"]
 
+gamma = 1.0
+lr = 1.0
+min_lr = 0.002
+epsilon = 0.02
+max_vertical_degree = 20
+max_horizontal_degree = 180
+max_power = 10
+eta = 0.0
 class ArcherEnv(object):
     
     def __init__(self,my_mission):
@@ -52,9 +59,7 @@ class ArcherEnv(object):
         self.mission = my_mission
         self.logger.handlers = []
         self.logger.addHandler(logging.StreamHandler(sys.stdout))
-        
-        self.policy = Policy[0]
-        
+        self.first_action = True
         self.action_selection = ["left","right","up","down", "power"]
         self.action = ""
         self.states = {} #to do
@@ -67,53 +72,52 @@ class ArcherEnv(object):
         
         self.trajectory = {} # state-action-reward sequence
         
-        self.Qtable = {} 
+        self.Qtable = None
 
-        self.state_space = {} # a table to store state-value 
-        self.action_space = {} # store action-value 
         
-        self.trans = [] # transition probability distribution 
+        
+        self.trans = defaultdict(lambda: defaultdict(float)) # transition probability distribution 
     
     def updateQTable(self,reward,obs):
         
-        dis = 0
-        if not self.Qtable.__contains__(self.current_state):
-            self.Qtable[self.current_state] = 0
-            self.states[self.current_state] = 0
-        #get most recent arrow's pos
-        print(obs[u'entities'])
-        print("last elememt at entities",obs[u'entities'][-1]['name'])
+        dis = 5
+        r = 0
+
+        #print(obs[u'entities'])
+        #print("last elememt at entities",obs[u'entities'][-1]['name'])
         
         for info in obs[u'entities']:
             if info[u'name'] == u'Pig':
-                self.target_info = info
-                #print("{}:({}, {})".format(target_info[u'name'],target_info[u'x'],target_info[u'z']))
+                self.target_info = info            
                 break;
         if obs[u'entities'][-1]['name'] == u'Arrow':
             self.recent_arrow_info = obs[u'entities'][-1]
             print()
             print("{}:({}, {})".format(self.recent_arrow_info[u'name'],self.recent_arrow_info[u'x'],self.recent_arrow_info[u'z']))
             print()
-        #print("Arrow",recent_arrow_info)       
-        #print("Pig",target_info)
+   
         if None not in (self.recent_arrow_info,self.target_info): 
             arrow_x = int(self.recent_arrow_info[u'x'])
             arrow_y = int(self.recent_arrow_info[u'z'])
             target_x = int(self.target_info[u'x'])
             target_y = int(self.target_info[u'z'])
             dis = math.sqrt( ( pow((target_x - arrow_x),2) + pow((target_y - arrow_y),2) ) )
-            print("distance:",dis)
-        print("reward:",reward)
-        print("updating:",self.current_state)
-        if reward < 100:
-            self.Qtable[self.current_state] += -1 * dis
-        else:
-            self.Qtable[self.current_state] += reward
-            
         
+        
+        if reward == 0:
+            r = dis * -1
+        else:
+            r = reward
+            
+        print("\nupdating:",self.prev_s)    
+        print("\nreward:",reward)
+        print(self.Qtable[self.current_state].values())
+        self.Qtable[self.prev_s][self.action] = self.Qtable[self.prev_s][self.action] + eta * \
+                                                        (r + gamma * max(self.Qtable[self.current_state].values()) - self.Qtable[self.prev_s][self.action])
+        self.__debuginfo__()
+        return r
             
         #print("Qtable:",self.Qtable)
-                
     def __convert_degree__(self,L):
         
         to_return = {}
@@ -123,17 +127,35 @@ class ArcherEnv(object):
                 to_return[k] = v / 10
             else:
                 to_return[k] = v * 0.005
-        print("commands: ",to_return)
 
         return to_return
     
-    def __debuginfo__(self, obs):
+    def __debuginfo__(self):
         
-        for info in obs[u'entities']:
-            if info[u'name'] == u'MalmoTutorialBot':
-                print("Agent pos: ({}, {})\n".format(info[u'x'], info[u'z']))
-        print("{}:({}, {})\n".format(self.recent_arrow_info[u'name'],self.recent_arrow_info[u'x'],self.recent_arrow_info[u'z']))
-     
+        #for info in obs[u'entities']:
+        #    if info[u'name'] == u'MalmoTutorialBot':
+        #        print("Agent pos: ({}, {})\n".format(info[u'x'], info[u'z']))
+        print("************************************************")
+        if self.recent_arrow_info != None:
+            print("last {}:({}, {})\n".format(self.recent_arrow_info[u'name'],self.recent_arrow_info[u'x'],self.recent_arrow_info[u'z']))
+        print("\nprevious_state: ",self.prev_s)
+        print("\ncurrent_state: ",self.current_state)
+        print("\nTransition probability:\n")
+        for key in self.trans.keys():
+            print("state: ",key)
+            for k,v in self.trans[key].items():
+                print("{} -> {}%".format(k,v))
+            print("-------------------------------------------")
+            
+        print("\nQtable:\n")
+        for key in self.Qtable.keys():
+            print("state: ",key)
+            for k,v in self.Qtable[key].items():
+                print("{} -> {}".format(k,v))
+            print("-------------------------------------------")
+        
+        
+        print("************************************************")
     def __adjust_degree__(self,prev_degree):
         
         print(self.recent_arrow_info)
@@ -224,63 +246,51 @@ class ArcherEnv(object):
         # random version
         if obs[u'entities'][-1]['name'] == u'Arrow':
             self.recent_arrow_info = obs[u'entities'][-1]
-            self.policy = "greedy"
             
-        if self.policy == "random":
-            random_action = random.randint(0,(len(self.action_selection))-2)
-            print("select {}".format(self.action_selection[random_action]))
-#             if self.action_selection[random_action] == "left-up":
-#                 random_vertical_degree = random.randint(0,90)
-#                 random_horizontal_degree = random.randint(-90,0)
-#                 random_power = random.randint(2,10) 
-#                 
-#             elif self.action_selection[random_action] == "left-down":
-#                 random_vertical_degree = random.randint(-90,0)
-#                 random_horizontal_degree = random.randint(-90,0)
-#                 random_power = random.randint(2,10) 
-#                 
-#             elif self.action_selection[random_action] == "right-up":
-#                 random_vertical_degree = random.randint(0,90)
-#                 random_horizontal_degree = random.randint(0,90)
-#                 random_power = random.randint(2,10) 
-#             
-#             elif self.action_selection[random_action] == "right-down":
-#                 random_vertical_degree = random.randint(-90,0)
-#                 random_horizontal_degree = random.randint(0,90)
-#                 random_power = random.randint(2,10) 
-
-            random_vertical_degree = random.randint(0,20)
-            random_horizontal_degree = random.randint(0,90)
-            random_power = random.randint(2,10) 
-            self.action = self.action_selection[random_action]
-            self.current_state = "{}:{}:{}".format(random_vertical_degree,random_horizontal_degree,random_power)
-            print("key:",self.current_state)
+        if self.first_action or (random.uniform(0,1) < epsilon):
+            self.action = self.action_selection[random.randint(0,(len(self.action_selection))-2)]
+            self.current_state = ""
+            s = np.zeros(3)
             
-            res = self.__convert_degree__({"vertical_degree":random_vertical_degree,
-                                          "horizontal_degree":random_horizontal_degree,
-                                          "power":random_power})
-    
+           
+            if self.action == "left" or self.action == "right":
+                s[1] = random.randint(0,90)
+            else:
+                s[0] = random.randint(0,20)
+                
+            s[2] = random.randint(2,10) 
             
-        elif self.policy == "greedy":
-            # to do: get the closest arrow's position and check its surrounding block (3x3)
-            #        find the block that has the closest distance to the target
-            #        select that block as our next state
-            #print("Qtable:",self.Qtable)
+            print()
+            print("From random: current_state",self.current_state)
+            print()
+            self.current_state = "{}:{}:{}".format(s[0],s[1],s[2])
+            self.Qtable[self.current_state] = {"left": 0,"right": 0, "up": 0, "down": 0}
+            res = self.__convert_degree__({"vertical_degree":s[0],
+                                          "horizontal_degree":s[1],
+                                          "power":s[2]})
+      
+        else:
+            prev_degree = [float(i) for i in self.current_state.split(":")]
+            logits = list(self.Qtable[self.prev_s].values())
+            print(logits)
+            logits_exp = np.exp(logits)
+            probs = logits_exp / np.sum(logits_exp)
+            i = 0
+            for k in self.trans[self.prev_s]:
+                self.trans[self.prev_s][k] = probs[i]
+                i += 1
             
-            best_pos = max(self.Qtable, key=self.Qtable.get)
-            l = [best_pos]
-            for k, r in self.Qtable.items():
-                if abs(r) - abs(self.Qtable[best_pos]) < 2:
-                    l.append(k)
-            vd,hd,power = l[random.randint(0,len(l)-1)].split(':')
-            #vd,hd,power = best_pos.split(":")
-            if self.recent_arrow_info != None:
-                degree = self.__adjust_degree__([float(vd),float(hd),float(power)])
-            print("new degree:",self.current_state)
-            print("select: ",self.action)
+            print(self.trans[self.prev_s])
+            self.action = np.random.choice([key for key in self.trans[self.prev_s].keys() if self.trans[self.prev_s][key] == max(self.trans[self.prev_s].values())])
+            degree = self.__adjust_degree__(prev_degree)
+            self.current_state = "{}:{}:{}".format(degree[0],degree[1],degree[2])
+            self.Qtable[self.current_state] = {"left": 0,"right": 0, "up": 0, "down": 0}
             res = self.__convert_degree__({"vertical_degree": degree[0],
                                           "horizontal_degree":degree[1],
                                           "power":degree[2]})
+        print("Action: ",self.action)
+        print("Commands: ",res)
+        print()
         return res
     
     def turn_up_down(self,agent_host,commands):
@@ -308,7 +318,6 @@ class ArcherEnv(object):
                 agent_host.sendCommand("turn 0")
             
     def execute_action(self,agent_host,commands):
-        #print("command",commands)
 
         self.turn_left_right(agent_host,commands["horizontal_degree"])
         self.turn_up_down(agent_host, commands["vertical_degree"])
@@ -321,34 +330,54 @@ class ArcherEnv(object):
         
     def run(self, agent_host):
         
-        total_reward = 0
-        first_action = True
+        total_discounted_reward = 0
+        total_step = 30
+        step_idx = 0
+        self.Qtable = defaultdict(lambda: defaultdict(float))
         world_state = agent_host.getWorldState()
         while world_state.is_mission_running:
             
-            current_r = 0
-            if first_action:
-                while True:
+            for i in range(total_step):
+                if self.first_action:
+                        current_r = 0
+                        self.prev_s = "0:0:0"
+                        self.trans[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
+                        self.Qtable[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
+                        time.sleep(0.1)
+                        world_state = agent_host.getWorldState()
+                        for error in world_state.errors:
+                            self.logger.error("Error: %s" % error.text)
+                            
+                        if world_state.is_mission_running and len(world_state.observations)>0 and not world_state.observations[-1].text=="{}":
+                            self.execute_action(agent_host, self.make_action(world_state))
+                            for reward in world_state.rewards:
+                                #print(reward)
+                                #print("reward.getValue()",reward.getValue())
+                                current_r += reward.getValue()
+                            obs_text = world_state.observations[-1].text
+                            obs = json.loads(obs_text)
+                            total_discounted_reward += self.updateQTable(current_r, obs)
+                        self.first_action = False
+                else:
+                    current_r = 0
                     time.sleep(0.1)
                     world_state = agent_host.getWorldState()
                     for error in world_state.errors:
                         self.logger.error("Error: %s" % error.text)
-                    for reward in world_state.rewards:
-                        #print(reward)
-                        print("reward.getValue()",reward.getValue())
-                        current_r += reward.getValue()
+                            
                     if world_state.is_mission_running and len(world_state.observations)>0 and not world_state.observations[-1].text=="{}":
                         self.execute_action(agent_host, self.make_action(world_state))
+                        for reward in world_state.rewards:
+                            #print(reward)
+                            print("\nreward.getValue()",reward.getValue())
+                            current_r += reward.getValue()
                         obs_text = world_state.observations[-1].text
                         obs = json.loads(obs_text)
-                        self.updateQTable(current_r, obs)
+                        total_discounted_reward += self.updateQTable(current_r, obs)
                         self.prev_s = self.current_state
-                        self.prev_a = self.action
-                        if len(self.Qtable) > 0:
-                            for k,v in self.Qtable.items():
-                                print(k,":",v)
-                    
-                        break
+                        self.trans[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
+                        
+         
 # More interesting generator string: "3;7,44*49,73,35:1,159:4,95:13,35:13,159:11,95:10,159:14,159:6,35:6,95:6;12;"
 def drawrailline(x1, z1, x2, z2, y):
     ''' Draw a powered rail between the two points '''
@@ -487,7 +516,7 @@ for i in range(num_of_repeats):
         world_state = agent_host.getWorldState()
         for error in world_state.errors:
             print("Error:",error.text)
-    
+    eta = max(min_lr,lr * (0.85 ** (i//100)))
     agent.run(agent_host)
     time.sleep(1)
 
