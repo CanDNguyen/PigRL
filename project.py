@@ -43,11 +43,13 @@ else:
 gamma = 1.0
 lr = 1.0
 min_lr = 0.002
-epsilon = 0.02
+epsilon = 0.1
 max_vertical_degree = 20
 max_horizontal_degree = 180
 max_power = 10
 eta = 0.0
+target_info = None
+
 class ArcherEnv(object):
     
     def __init__(self,my_mission):
@@ -60,6 +62,7 @@ class ArcherEnv(object):
         self.logger.handlers = []
         self.logger.addHandler(logging.StreamHandler(sys.stdout))
         self.first_action = True
+        self.first_state = None
         self.action_selection = ["left","right","up","down", "power"]
         self.action = ""
         self.states = {} #to do
@@ -72,49 +75,56 @@ class ArcherEnv(object):
         
         self.trajectory = {} # state-action-reward sequence
         
-        self.Qtable = None
+        self.Qtable = defaultdict(lambda: defaultdict(float))
 
         
         
         self.trans = defaultdict(lambda: defaultdict(float)) # transition probability distribution 
-    
+    def reset(self):
+        self.prev_s = self.first_state
+        
     def updateQTable(self,reward,obs):
         
-        dis = 5
+        dis = 0
         r = 0
-
+        world_state = agent_host.getWorldState()
         #print(obs[u'entities'])
         #print("last elememt at entities",obs[u'entities'][-1]['name'])
-        
-        for info in obs[u'entities']:
-            if info[u'name'] == u'Pig':
-                self.target_info = info            
-                break;
+        if len(world_state.observations)>0 and not world_state.observations[-1].text=="{}":
+            msg = world_state.observations[-1].text
+            obs = json.loads(msg)
         if obs[u'entities'][-1]['name'] == u'Arrow':
             self.recent_arrow_info = obs[u'entities'][-1]
-            print()
-            print("{}:({}, {})".format(self.recent_arrow_info[u'name'],self.recent_arrow_info[u'x'],self.recent_arrow_info[u'z']))
-            print()
+            #print()
+            #print("{}:({}, {})".format(self.recent_arrow_info[u'name'],self.recent_arrow_info[u'x'],self.recent_arrow_info[u'z']))
+            #print()
    
-        if None not in (self.recent_arrow_info,self.target_info): 
+        if None not in (self.recent_arrow_info,target_info): 
             arrow_x = int(self.recent_arrow_info[u'x'])
             arrow_y = int(self.recent_arrow_info[u'z'])
-            target_x = int(self.target_info[u'x'])
-            target_y = int(self.target_info[u'z'])
+            target_x = int(target_info[u'x'])
+            target_y = int(target_info[u'z'])
             dis = math.sqrt( ( pow((target_x - arrow_x),2) + pow((target_y - arrow_y),2) ) )
+            dis = round(dis,2)
         
         
         if reward == 0:
             r = dis * -1
         else:
             r = reward
-            
-        print("\nupdating:",self.prev_s)    
+             
         print("\nreward:",reward)
-        print(self.Qtable[self.current_state].values())
-        self.Qtable[self.prev_s][self.action] = self.Qtable[self.prev_s][self.action] + eta * \
+        #print(self.Qtable[self.current_state].values())
+        if not self.first_action:
+            self.Qtable[self.prev_s][self.action] =  self.Qtable[self.prev_s][self.action] + eta * \
                                                         (r + gamma * max(self.Qtable[self.current_state].values()) - self.Qtable[self.prev_s][self.action])
-        self.__debuginfo__()
+        else:
+            self.first_action = False
+            self.first_state = self.current_state
+            self.Qtable[self.current_state][self.action] = 0 + eta * (r + gamma * max(self.Qtable[self.current_state].values())) - 0
+
+            
+        #self.__debuginfo__()
         return r
             
         #print("Qtable:",self.Qtable)
@@ -141,11 +151,11 @@ class ArcherEnv(object):
         print("\nprevious_state: ",self.prev_s)
         print("\ncurrent_state: ",self.current_state)
         print("\nTransition probability:\n")
-        for key in self.trans.keys():
-            print("state: ",key)
-            for k,v in self.trans[key].items():
-                print("{} -> {}%".format(k,v))
-            print("-------------------------------------------")
+#         for key in self.trans.keys():
+#             print("state: ",key)
+#             for k,v in self.trans[key].items():
+#                 print("{} -> {}%".format(k,v))
+#             print("-------------------------------------------")
             
         print("\nQtable:\n")
         for key in self.Qtable.keys():
@@ -243,16 +253,11 @@ class ArcherEnv(object):
                     self.agent_info = info
                     break
         
-        # random version
-        if obs[u'entities'][-1]['name'] == u'Arrow':
-            self.recent_arrow_info = obs[u'entities'][-1]
             
         if self.first_action or (random.uniform(0,1) < epsilon):
             self.action = self.action_selection[random.randint(0,(len(self.action_selection))-2)]
             self.current_state = ""
             s = np.zeros(3)
-            
-           
             if self.action == "left" or self.action == "right":
                 s[1] = random.randint(0,90)
             else:
@@ -264,31 +269,34 @@ class ArcherEnv(object):
             print("From random: current_state",self.current_state)
             print()
             self.current_state = "{}:{}:{}".format(s[0],s[1],s[2])
-            self.Qtable[self.current_state] = {"left": 0,"right": 0, "up": 0, "down": 0}
+            if(self.current_state not in self.Qtable.keys()):
+                self.Qtable[self.current_state] = {"left": 0,"right": 0, "up": 0, "down": 0}
             res = self.__convert_degree__({"vertical_degree":s[0],
                                           "horizontal_degree":s[1],
                                           "power":s[2]})
-      
-        else:
-            prev_degree = [float(i) for i in self.current_state.split(":")]
-            logits = list(self.Qtable[self.prev_s].values())
-            print(logits)
-            logits_exp = np.exp(logits)
-            probs = logits_exp / np.sum(logits_exp)
-            i = 0
-            for k in self.trans[self.prev_s]:
-                self.trans[self.prev_s][k] = probs[i]
-                i += 1
             
-            print(self.trans[self.prev_s])
-            self.action = np.random.choice([key for key in self.trans[self.prev_s].keys() if self.trans[self.prev_s][key] == max(self.trans[self.prev_s].values())])
-            degree = self.__adjust_degree__(prev_degree)
+        else:
+            print("self.previous_state",self.prev_s)
+            print("self.Qtable[self.prev_s]",self.Qtable[self.prev_s])
+            prev_degree = [float(i) for i in self.prev_s.split(":")]
+            #logits = list(self.Qtable[self.prev_s].values())
+            #logits_exp = np.exp(logits)
+            #probs = logits_exp / np.sum(logits_exp)
+            #i = 0
+            #for k in self.trans[self.prev_s]:
+            #    self.trans[self.prev_s][k] = probs[i]
+            #    i += 1
+            self.action = np.random.choice([key for key in self.Qtable[self.prev_s].keys() if self.Qtable[self.prev_s][key] == max(self.Qtable[self.prev_s].values())])
+            #degree = self.__adjust_degree__(prev_degree)
+            degree = prev_degree
             self.current_state = "{}:{}:{}".format(degree[0],degree[1],degree[2])
-            self.Qtable[self.current_state] = {"left": 0,"right": 0, "up": 0, "down": 0}
+            if(self.current_state not in self.Qtable.keys()):
+                self.Qtable[self.current_state] = {"left": 0,"right": 0, "up": 0, "down": 0}
             res = self.__convert_degree__({"vertical_degree": degree[0],
                                           "horizontal_degree":degree[1],
                                           "power":degree[2]})
-        print("Action: ",self.action)
+            print("self.current_state",self.current_state)
+        print("Taking action: ",self.action)
         print("Commands: ",res)
         print()
         return res
@@ -326,23 +334,21 @@ class ArcherEnv(object):
         agent_host.sendCommand("use 1")
         time.sleep(commands["power"])
         agent_host.sendCommand("use 0")
-        time.sleep(1)
+    
         
     def run(self, agent_host):
-        
+        print("Qtable size: ",len(self.Qtable))
         total_discounted_reward = 0
         total_step = 30
         step_idx = 0
-        self.Qtable = defaultdict(lambda: defaultdict(float))
         world_state = agent_host.getWorldState()
-        while world_state.is_mission_running:
-            
+        while world_state.is_mission_running:  
             for i in range(total_step):
                 if self.first_action:
                         current_r = 0
-                        self.prev_s = "0:0:0"
-                        self.trans[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
-                        self.Qtable[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
+                        #self.prev_s = "0:0:0"
+                        #self.trans[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
+                        #self.Qtable[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
                         time.sleep(0.1)
                         world_state = agent_host.getWorldState()
                         for error in world_state.errors:
@@ -354,10 +360,14 @@ class ArcherEnv(object):
                                 #print(reward)
                                 #print("reward.getValue()",reward.getValue())
                                 current_r += reward.getValue()
+                            if current_r > 0:
+                                agent_host.sendCommand("quit")
                             obs_text = world_state.observations[-1].text
                             obs = json.loads(obs_text)
-                            total_discounted_reward += self.updateQTable(current_r, obs)
-                        self.first_action = False
+                            total_discounted_reward += (gamma ** i) * self.updateQTable(current_r,obs)
+                            self.prev_s = self.current_state
+                            if(self.prev_s not in self.trans.keys()):
+                                self.trans[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
                 else:
                     current_r = 0
                     time.sleep(0.1)
@@ -369,15 +379,20 @@ class ArcherEnv(object):
                         self.execute_action(agent_host, self.make_action(world_state))
                         for reward in world_state.rewards:
                             #print(reward)
-                            print("\nreward.getValue()",reward.getValue())
+                            print("\n********************reward.getValue()",reward.getValue())
                             current_r += reward.getValue()
+                        if current_r > 0:
+                            agent_host.sendCommand("quit")
                         obs_text = world_state.observations[-1].text
                         obs = json.loads(obs_text)
-                        total_discounted_reward += self.updateQTable(current_r, obs)
+                        total_discounted_reward += (gamma ** i) * self.updateQTable(current_r,obs)
                         self.prev_s = self.current_state
-                        self.trans[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
+                        if(self.prev_s not in self.trans.keys()):
+                            self.trans[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
                         
-         
+            agent_host.sendCommand("quit")
+        return total_discounted_reward     
+           
 # More interesting generator string: "3;7,44*49,73,35:1,159:4,95:13,35:13,159:11,95:10,159:14,159:6,35:6,95:6;12;"
 def drawrailline(x1, z1, x2, z2, y):
     ''' Draw a powered rail between the two points '''
@@ -417,6 +432,7 @@ def drawblock(x, y, z):
     return '<DrawBlock x="' + str(x) + ystonesegment + str(z) + '" type="redstone_block"/>'
 def drawloop(radius, y):
     ''' Create a loop of powered rail '''
+    print(drawrailline(-radius, 1-radius, -radius, radius-1, y))
     return drawrailline(-radius, 1-radius, -radius, radius-1, y) + \
            drawrailline(radius, 1-radius, radius, radius-1, y) + \
            drawrailline(1-radius, radius, radius-1, radius, y) + \
@@ -424,7 +440,13 @@ def drawloop(radius, y):
            drawblock(radius, y, radius) + drawblock(-radius, y, radius) + drawblock(-radius, y, -radius) + drawblock(radius, y, -radius)
            
            
-
+def random_pos():
+    L = [(0,0),(15,15),(15,-15),(30,0)]
+    i = random.randint(0,len(L)-1)
+    x,z = L[2]
+    print("target pos: ({}, {})".format(x,z))
+    return '<DrawEntity x="'+str(x)+'" y="57" z="' + str(z) + '" type="Pig" />'
+    
 missionXML='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
             <Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             
@@ -444,7 +466,8 @@ missionXML='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
                   <FlatWorldGenerator generatorString="3;7,56*35:9,36;,biome_1"/>
                   <DrawingDecorator>
                       '''+drawloop(5, 57)+'''
-                      <DrawEntity x="0" y="57" z="0" type="Pig"/>
+                      <DrawEntity x="15" y="57" z="-15" xVel="0" yVel="0" zVel="-1" type="MinecartRideable"/>
+                      '''+random_pos()+'''
                   </DrawingDecorator>
                   <ServerQuitFromTimeUp timeLimitMs="300000"/>
                   <ServerQuitWhenAnyAgentFinishes/>
@@ -467,12 +490,62 @@ missionXML='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
                   <RewardForDamagingEntity>
                       <Mob type ="Pig" reward="100"/>
                   </RewardForDamagingEntity>
+                  <ChatCommands />
+                  <MissionQuitCommands quitDescription="give_up"/>
                   <ObservationFromFullStats/>
                   <ContinuousMovementCommands turnSpeedDegs="180"/>
                 </AgentHandlers>
               </AgentSection>
             </Mission>'''
 
+missionXML_2 ='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+            <Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            
+              <About>
+                <Summary>Hello world!</Summary>
+              </About>
+              
+              <ServerSection>
+                <ServerInitialConditions>
+                  <Time>
+                    <StartTime>12000</StartTime>
+                    <AllowPassageOfTime>false</AllowPassageOfTime>
+                  </Time>
+                  <Weather>clear</Weather>
+                </ServerInitialConditions>
+                <ServerHandlers>
+                  <FlatWorldGenerator generatorString="3;7,56*35:9,36;,biome_1"/>
+                  <DrawingDecorator>
+                      '''+drawloop(5, 57)+'''
+                  </DrawingDecorator>
+                  <ServerQuitFromTimeUp timeLimitMs="300000"/>
+                  <ServerQuitWhenAnyAgentFinishes/>
+                </ServerHandlers>
+              </ServerSection>
+              
+              <AgentSection mode="Survival">
+                <Name>MalmoTutorialBot</Name>
+                <AgentStart>
+                    <Placement x="15" y="57" z="0" yaw="90"/>
+                    <Inventory>
+                        <InventoryItem slot="0" type="bow"/>
+                        <InventoryItem slot="1" type="arrow" quantity="60"/>
+                    </Inventory>
+                </AgentStart>
+                <AgentHandlers>
+                  <ObservationFromNearbyEntities>
+                     <Range name="entities" xrange="60" yrange="40" zrange="60"/>
+                  </ObservationFromNearbyEntities>
+                  <RewardForDamagingEntity>
+                      <Mob type ="Pig" reward="100"/>
+                  </RewardForDamagingEntity>
+                  <ChatCommands />
+                  <MissionQuitCommands quitDescription="give_up"/>
+                  <ObservationFromFullStats/>
+                  <ContinuousMovementCommands turnSpeedDegs="180"/>
+                </AgentHandlers>
+              </AgentSection>
+            </Mission>'''
 # Create default Malmo objects:
 
 agent_host = MalmoPython.AgentHost()
@@ -488,9 +561,12 @@ if agent_host.receivedArgument("help"):
 
 my_mission = MalmoPython.MissionSpec(missionXML, True)
 my_mission_record = MalmoPython.MissionRecordSpec()
+my_mission_2 = MalmoPython.MissionSpec(missionXML_2, True)
+
 
 agent = ArcherEnv(my_mission)
-num_of_repeats = 10
+num_of_repeats = 50
+cumulative_rewards = []
 # Attempt to start a mission:
 max_retries = 3
 for i in range(num_of_repeats):
@@ -498,7 +574,10 @@ for i in range(num_of_repeats):
     print('Repeat %d of %d' % ( i+1, num_of_repeats ))
     for retry in range(max_retries):
         try:
-            agent_host.startMission( my_mission, my_mission_record )
+            if i == 0:
+                agent_host.startMission( my_mission, my_mission_record )
+            else:
+                agent_host.startMission( my_mission_2, my_mission_record )
             break
         except RuntimeError as e:
             if retry == max_retries - 1:
@@ -516,10 +595,26 @@ for i in range(num_of_repeats):
         world_state = agent_host.getWorldState()
         for error in world_state.errors:
             print("Error:",error.text)
+    while world_state.has_mission_begun and target_info == None:        
+        world_state = agent_host.getWorldState()
+        if len(world_state.observations)>0 and not world_state.observations[-1].text=="{}":
+            msg = world_state.observations[-1].text
+            obs = json.loads(msg)
+            for info in obs[u'entities']:
+                if info[u'name'] == u'Pig':
+                    target_info = info            
+                    break;
+   
+    print("target_info",target_info)        
     eta = max(min_lr,lr * (0.85 ** (i//100)))
-    agent.run(agent_host)
+    epsilon = ca
+    cumulative_reward = agent.run(agent_host)
+    print('Cumulative reward: %d' % cumulative_reward)
+    cumulative_rewards += [ cumulative_reward ]
+    agent.reset()
     time.sleep(1)
 
+print("total episodes reward:",cumulative_rewards)
 print("Mission running ", end=' ')
 
 
