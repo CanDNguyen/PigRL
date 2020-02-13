@@ -333,6 +333,7 @@ class ArcherEnv(object):
         total_discounted_reward = 0
         total_step = 30
         step_idx = 0
+        temp_r = 0
         self.Qtable = defaultdict(lambda: defaultdict(float))
         world_state = agent_host.getWorldState()
         while world_state.is_mission_running:
@@ -356,7 +357,8 @@ class ArcherEnv(object):
                                 current_r += reward.getValue()
                             obs_text = world_state.observations[-1].text
                             obs = json.loads(obs_text)
-                            total_discounted_reward += self.updateQTable(current_r, obs)
+                            temp_r = self.updateQTable(current_r, obs)
+                            total_discounted_reward += temp_r
                         self.first_action = False
                 else:
                     current_r = 0
@@ -373,10 +375,13 @@ class ArcherEnv(object):
                             current_r += reward.getValue()
                         obs_text = world_state.observations[-1].text
                         obs = json.loads(obs_text)
-                        total_discounted_reward += self.updateQTable(current_r, obs)
+                        temp_r = self.updateQTable(current_r, obs)
+                        total_discounted_reward += temp_r
                         self.prev_s = self.current_state
                         self.trans[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
-                        
+				
+                if temp_r > 0:
+                    agent_host.sendCommand("quit")
          
 # More interesting generator string: "3;7,44*49,73,35:1,159:4,95:13,35:13,159:11,95:10,159:14,159:6,35:6,95:6;12;"
 def drawrailline(x1, z1, x2, z2, y):
@@ -469,6 +474,7 @@ missionXML='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
                   </RewardForDamagingEntity>
                   <ObservationFromFullStats/>
                   <ContinuousMovementCommands turnSpeedDegs="180"/>
+                  <MissionQuitCommands/>
                 </AgentHandlers>
               </AgentSection>
             </Mission>'''
