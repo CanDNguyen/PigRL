@@ -182,7 +182,7 @@ class ArcherEnv(object):
             self.current_state = ""
             s = np.zeros(3)
             s[1] = random.randint(82,98)
-            s[0] = random.randint(-3,0) 
+            s[0] = random.randint(-2,2) 
             s[2] = 10   
             self.action = self.action_selection[random.randint(0,len(self.action_selection) - 2)]
             
@@ -204,30 +204,26 @@ class ArcherEnv(object):
             l = best_action.split(":")
             prev_degree = [float(l[i]) for i in range(0,len(l)-1)]
             self.action = l[-1]
-            
+    
             if self.target_info != None and self.recent_arrow_info != None:
                 close_block,dis = self.__adjust_action__()
-                print("prev_degree[1] + 5 + degree_factor = ",prev_degree[1] + 5 + degree_factor)
-                print("prev_degree[1] - 5 + degree_factor = ",prev_degree[1] + 5 + degree_factor)
-                print("close block:",close_block)
-                print("degree_factor",degree_factor)
-    
-              
+         
                 if close_block == "right" and (prev_degree[1] + 2) <= 98:
                     prev_degree[1] += 2
-                    print("+3")
+         
                 elif close_block == "left" and (prev_degree[1] - 2 ) >= 82:
                     prev_degree[1] -= 2
-                    print("-3")
-                elif close_block == "up" and (prev_degree[0] - 1) >= -3:
+         
+                elif close_block == "up" and (prev_degree[0] - 1) >= -2:
                     prev_degree[0] -= 1
-                    print("-1")
-                elif close_block == "down" and (prev_degree[0] + 1)  <= 0:
+            
+                elif close_block == "down" and (prev_degree[0] + 1)  <= 2:
                     prev_degree[0] += 1
-                    print("+1")
+              
             
             
             self.current_state = "Arrow_{}".format(self.shots)
+            print("From Qtable: current_state",self.current_state)
             self.degree = "{}:{}:{}:{}".format(prev_degree[0],prev_degree[1],prev_degree[2],self.action)
             #if(self.current_state not in self.Qtable.keys()):
             if self.degree not in self.Qtable[self.current_state].keys():
@@ -312,8 +308,6 @@ class ArcherEnv(object):
                             if world_state.number_of_rewards_since_last_state > 0:
                                 current_r = sum(reward.getValue() for reward in world_state.rewards)
                                 print("current reward:",current_r)
-                                
-                            total_discounted_reward += (gamma ** i) * self.updateQTable(current_r)
                             break
                                 
                 else:              
@@ -333,10 +327,11 @@ class ArcherEnv(object):
                             world_state = self.get_recent_obs()
                             if world_state.number_of_rewards_since_last_state > 0:
                                 current_r = sum(reward.getValue() for reward in world_state.rewards)
-                            total_discounted_reward += (gamma ** i) * self.updateQTable(current_r)
+                            
                             self.prev_s = self.current_state
                             break
-        
+                
+                total_discounted_reward += (gamma ** i) * self.updateQTable(current_r)
                 if current_r > 0:
                     num_of_hits += 1
                     print("current reward:",current_r)
@@ -362,6 +357,20 @@ def drawrailline(x1, z1, x2, z2, y):
     #return rail_line
     return redstone_line
 
+def drawfence(x1,z1,x2,z2,y):
+    ''' Draw a powered rail between the two points '''
+    y1railsegment = '" y1="' + str(y) + '" z1="'
+    y2railsegment = '" y2="' + str(y) + '" z2="'
+    y1stonesegment = '" y1="' + str(y-1) + '" z1="'
+    y2stonesegment = '" y2="' + str(y-1) + '" z2="'
+    shape = "north_south"
+    if z1 == z2:
+        shape = "east_west"
+    rail_line = '<DrawLine x1="' + str(x1) + y1railsegment + str(z1) + '" x2="' + str(x2) + y2railsegment + str(z2) + '" type="golden_rail" variant="' + shape + '"/>'
+    redstone_line = '<DrawLine x1="' + str(x1) + y1stonesegment + str(z1) + '" x2="' + str(x2) + y2stonesegment + str(z2) + '" type="fence" />'
+    #return redstone_line + rail_line
+    #return rail_line
+    return redstone_line
 def drawblock(x, y, z):
     ''' Draw a corner piece of rail '''
     shape = ""
@@ -385,7 +394,7 @@ def drawblock(x, y, z):
     return '<DrawBlock x="' + str(x) + ystonesegment + str(z) + '" type="redstone_block"/>'
 def drawloop(radius, y):
     ''' Create a loop of powered rail '''
-    print(drawrailline(-radius, 1-radius, -radius, radius-1, y))
+    #print(drawrailline(-radius, 1-radius, -radius, radius-1, y))
     return drawrailline(-radius, 1-radius, -radius, radius-1, y) + \
            drawrailline(1-radius, radius, radius-1, radius, y) + \
            drawrailline(1-radius, -radius, radius-1, -radius, y) + \
@@ -393,7 +402,7 @@ def drawloop(radius, y):
            drawrailline(1-radius, radius, radius-1, radius, y+1) + \
            drawrailline(1-radius, -radius, radius-1, -radius, y+1) + \
            drawblock(radius, y, radius) + drawblock(-radius, y, radius) + drawblock(-radius, y, -radius) + drawblock(radius, y, -radius)
-           #drawrailline(radius, 1-radius, radius, radius-1, y) + \ at second
+  
            
 def random_pos():
     L = [(0,0),(15,15),(15,-15),(30,0)]
@@ -519,8 +528,9 @@ my_mission_2 = MalmoPython.MissionSpec(missionXML_2, True)
 
 
 agent = ArcherEnv(my_mission)
-num_of_repeats = 50
+num_of_repeats = 150
 cumulative_rewards = []
+result = {'0-50':0,'51-100':0,'101-149':0}
 total_shots = 0
 # Attempt to start a mission:
 max_retries = 3
@@ -558,13 +568,21 @@ for i in range(num_of_repeats):
     #print("target_info",target_info)        
     eta = max(min_lr,lr * (0.85 ** (i//100)))
     if epsilon > 0:
-        epsilon -= 0.01 * i
+        epsilon -= 0.004 * i
     num_of_shots,cumulative_reward = agent.run(agent_host)
     total_shots += num_of_shots
     print("total shots:",total_shots)
     print("num of hits",num_of_hits)
     if total_shots != 0:
         print('Accurancy: {}%'.format(round((num_of_hits/total_shots),3) * 100))
+        
+    if i <= 50:
+        result['0-50'] = round((num_of_hits/total_shots),3) * 100
+    elif i > 50 and i <= 100:
+        result['51-100'] = round((num_of_hits/total_shots),3) * 100
+    elif i > 100:
+        result['101-149'] = round((num_of_hits/total_shots),3) * 100
+    
     print('Cumulative reward: %d' % cumulative_reward)
     cumulative_rewards += [ cumulative_reward ]
     agent.reset()
@@ -580,12 +598,18 @@ for i in range(num_of_repeats):
                     target_dead = False
                     break
             break
- 
+    if i == 50 or i == 100:
+        total_shots = 0
+        num_of_hits = 0
+     
     time.sleep(0.1)
     agent_host.sendCommand("quit")
     time.sleep(1)
 
 print("total episodes reward:",cumulative_rewards)
+print()
+for k,v in result.items():
+    print("At game {} -> accuracy: {}%".format(k,v))
 
 # Loop until mission ends:
 # agent_host.sendCommand("turn -1")
