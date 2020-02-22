@@ -43,12 +43,13 @@ else:
 gamma = 1.0
 lr = 1.0
 min_lr = 0.002
-epsilon = 0.6
+epsilon = 0.4
 max_vertical_degree = 20
 max_horizontal_degree = 180
 max_power = 10
 eta = 0.0
 target_info = None
+num_of_hits = 0
 
 class ArcherEnv(object):
     
@@ -83,23 +84,11 @@ class ArcherEnv(object):
     def reset(self):
         self.prev_s = self.first_state
         self.shots = 0
-        self.first_round = False
-    def updateQTable(self,reward,obs):
+        
+    def updateQTable(self,reward):
 
         dis = 0
         r = 0
-        world_state = agent_host.getWorldState()
-        #print(obs[u'entities'])
-        #print("last elememt at entities",obs[u'entities'][-1]['name'])
-        if len(world_state.observations)>0 and not world_state.observations[-1].text=="{}":
-            msg = world_state.observations[-1].text
-            obs = json.loads(msg)
-            if obs[u'entities'][-1]['name'] == u'Arrow':
-                self.recent_arrow_info = obs[u'entities'][-1]
-                #print()
-                #print("{}:({}, {})".format(self.recent_arrow_info[u'name'],self.recent_arrow_info[u'x'],self.recent_arrow_info[u'z']))
-                #print()
-   
         if None not in (self.recent_arrow_info,target_info): 
             arrow_x = int(self.recent_arrow_info[u'x'])
             arrow_y = int(self.recent_arrow_info[u'z'])
@@ -172,11 +161,11 @@ class ArcherEnv(object):
         adj_block_down = (float(self.recent_arrow_info[u'x']) + 1.0, float(self.recent_arrow_info[u'z']) )
         adj_block_up = (float(self.recent_arrow_info[u'x']) - 1.0, float(self.recent_arrow_info[u'z']) )
         
-        dis_r = math.sqrt( ( pow((target_x - adj_block_right[0]),2) + pow((target_y - adj_block_right[1]),2) ) )
-        dis_l = math.sqrt( ( pow((target_x - adj_block_left[0]),2) + pow((target_y - adj_block_left[1]),2) ) )
-        dis_up = math.sqrt( ( pow((target_x - adj_block_up[0]),2) + pow((target_y - adj_block_up[1]),2) ) )
-        dis_down = math.sqrt( ( pow((target_x - adj_block_down[0]),2) + pow((target_y - adj_block_down[1]),2) ) )
-        arrow_to_target = math.sqrt( ( pow((target_x - recent_arrow_pos[0]),2) + pow((target_y - recent_arrow_pos[1]),2) ) )
+        dis_r = math.sqrt( ( pow((target_x - adj_block_right[0]),2) + pow((target_y - adj_block_right[1]),2) ) ) + float(self.recent_arrow_info[u'y'])
+        dis_l = math.sqrt( ( pow((target_x - adj_block_left[0]),2) + pow((target_y - adj_block_left[1]),2) ) ) + float(self.recent_arrow_info[u'y'])
+        dis_up = math.sqrt( ( pow((target_x - adj_block_up[0]),2) + pow((target_y - adj_block_up[1]),2) ) ) + float(self.recent_arrow_info[u'y'])
+        dis_down = math.sqrt( ( pow((target_x - adj_block_down[0]),2) + pow((target_y - adj_block_down[1]),2) ) ) + float(self.recent_arrow_info[u'y'])
+        arrow_to_target = math.sqrt( ( pow((target_x - recent_arrow_pos[0]),2) + pow((target_y - recent_arrow_pos[1]),2) ) ) + float(self.recent_arrow_info[u'y'])
         
         blocks = {"right":dis_r, "left":dis_l, "up": dis_up, "down": dis_down}
         close_block = min(blocks, key=blocks.get)
@@ -184,38 +173,17 @@ class ArcherEnv(object):
         
                                 
     def make_action(self, world_state):
-        
-        obs_text = world_state.observations[-1].text
-        obs = json.loads(obs_text) # most recent observation
-        self.logger.debug(obs)
-        #print(obs)
+    
         degree = []
         res = []
         degree_factor = 0
-
-        if obs[u'entities'][-1]['name'] == u'Arrow':
-            self.recent_arrow_info = obs[u'entities'][-1]
-            
-        
-        for info in obs[u'entities']:
-            if info[u'name'] == u'Pig':
-                self.target_info = info
-                break
-                
-        
-        for info in obs[u'entities']:
-            if info[u'name'] == u'MalmoTutorialBot':
-                self.agent_info = info
-                break
-                
-        if self.first_round or (random.uniform(0,1) < epsilon):
+                        
+        if self.first_action or (random.uniform(0,1) < epsilon):
             self.current_state = ""
             s = np.zeros(3)
-            
-            
-            s[1] = random.randint(70,100)
-            s[0] = random.randint(-10,0) 
-            s[2] = random.randint(3,7)    
+            s[1] = random.randint(82,98)
+            s[0] = random.randint(-3,0) 
+            s[2] = 10   
             self.action = self.action_selection[random.randint(0,len(self.action_selection) - 2)]
             
             self.current_state = "Arrow_{}".format(self.shots)
@@ -233,31 +201,30 @@ class ArcherEnv(object):
         else:
             #print("self.previous_state",self.prev_s)
             best_action = np.random.choice([key for key in self.Qtable[self.prev_s].keys() if self.Qtable[self.prev_s][key] == max(self.Qtable[self.prev_s].values())])   
-            print("best_action",best_action)
             l = best_action.split(":")
             prev_degree = [float(l[i]) for i in range(0,len(l)-1)]
             self.action = l[-1]
             
-            close_block,dis = self.__adjust_action__()
-            degree_factor = dis / 10
-            print("prev_degree[1] + 5 + degree_factor = ",prev_degree[1] + 5 + degree_factor)
-            print("prev_degree[1] - 5 + degree_factor = ",prev_degree[1] + 5 + degree_factor)
-            print("close block:",close_block)
-            print("degree_factor",degree_factor)
-
-          
-            if close_block == "right" and (prev_degree[1] + 5 + degree_factor) <= 100:
-                prev_degree[1] += 5 + degree_factor
-                print("+3")
-            elif close_block == "left" and (prev_degree[1] - (5 + degree_factor)) >= 70:
-                prev_degree[1] -= 5 + degree_factor
-                print("-3")
-            elif close_block == "up" and (prev_degree[0] - 1) >= -10:
-                prev_degree[0] -= 1
-                print("-1")
-            elif close_block == "down" and (prev_degree[0] + 1)  <= 0:
-                prev_degree[0] += 1
-                print("+1")
+            if self.target_info != None and self.recent_arrow_info != None:
+                close_block,dis = self.__adjust_action__()
+                print("prev_degree[1] + 5 + degree_factor = ",prev_degree[1] + 5 + degree_factor)
+                print("prev_degree[1] - 5 + degree_factor = ",prev_degree[1] + 5 + degree_factor)
+                print("close block:",close_block)
+                print("degree_factor",degree_factor)
+    
+              
+                if close_block == "right" and (prev_degree[1] + 2) <= 98:
+                    prev_degree[1] += 2
+                    print("+3")
+                elif close_block == "left" and (prev_degree[1] - 2 ) >= 82:
+                    prev_degree[1] -= 2
+                    print("-3")
+                elif close_block == "up" and (prev_degree[0] - 1) >= -3:
+                    prev_degree[0] -= 1
+                    print("-1")
+                elif close_block == "down" and (prev_degree[0] + 1)  <= 0:
+                    prev_degree[0] += 1
+                    print("+1")
             
             
             self.current_state = "Arrow_{}".format(self.shots)
@@ -268,35 +235,63 @@ class ArcherEnv(object):
                 self.Qtable[self.current_state][self.degree] = 0
             return prev_degree
             
+    def get_recent_obs(self):
+        
+        while True:
+            world_state = agent_host.getWorldState()
+            if world_state.number_of_observations_since_last_state > 0:
+                obs_text = world_state.observations[-1].text
+                obs = json.loads(obs_text) # most recent observation
+                self.logger.debug(obs)
+                
+                for info in obs[u'entities']:
+                    if info[u'name'] == u'Pig':
+                        self.target_info = info
+                        break
+                    else:
+                        self.target_info = None
+                        
+                for info in obs[u'entities']:
+                    if info[u'name'] == u'MalmoTutorialBot':
+                        self.agent_info = info
+                        break
+                    
+                if obs[u'entities'][-1]['name'] == u'Arrow':
+                    self.recent_arrow_info = obs[u'entities'][-1]
+                    print()
+                    print("Recent {}:({}, {})".format(self.recent_arrow_info[u'name'],self.recent_arrow_info[u'x'],self.recent_arrow_info[u'z']))
+                    print()
+                break
+           
+        
+        return world_state
     
-              
     def execute_action(self,agent_host,commands):
-        print("taking action:",self.action)
-        print("commands:",commands)
+
         if self.action == "yaw":
+            print("taking aciton: yaw:",commands[1])
             agent_host.sendCommand("setYaw {}".format(commands[1]))
         else:
+            print("taking aciton: pitch:",commands[0])
             agent_host.sendCommand("setPitch {}".format(commands[0]))
-            
-        print(self.agent_info)
+  
         time.sleep(0.1)
         agent_host.sendCommand("use 1")
         time.sleep(commands[2] / 10)
         agent_host.sendCommand("use 0")
-    
+        time.sleep(0.5)
         
     def run(self, agent_host):
         total_discounted_reward = 0
         total_step = 30
         step_idx = 0
         world_state = agent_host.getWorldState()
+        global num_of_hits
         while world_state.is_mission_running:  
-            current_r = 0
             for i in range(total_step):
+                current_r = 0
                 if self.first_action:
-                        #self.prev_s = "0:0:0"
-                        #self.trans[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
-                        #self.Qtable[self.prev_s] = {"left": 0,"right": 0, "up": 0, "down": 0}
+                    while True:
                         time.sleep(0.1)
                         world_state = agent_host.getWorldState()
                         for error in world_state.errors:
@@ -304,47 +299,52 @@ class ArcherEnv(object):
                             
                         if world_state.is_mission_running and len(world_state.observations)>0 and not world_state.observations[-1].text=="{}":
                             self.shots += 1
+                            world_state = self.get_recent_obs()
+                            if self.target_info == None:
+                                return (self.shots,total_discounted_reward)
+                            time.sleep(0.1)
                             self.execute_action(agent_host, self.make_action(world_state))
                             time.sleep(0.1)
-                            print("current_r",current_r)
-                            obs_text = world_state.observations[-1].text
-                            obs = json.loads(obs_text)
-                            time.sleep(1)
-                            total_discounted_reward += (gamma ** i) * self.updateQTable(current_r,obs)
+                            world_state = self.get_recent_obs()
                             self.prev_s = self.current_state
-                            world_state = agent_host.getWorldState()
-                            print(world_state.rewards)
-                            for reward in world_state.rewards:
-                                #print(reward)
-                                print("rewards",reward.getValue())
-                                current_r += reward.getValue()
+                            #world_state = agent_host.getWorldState()
                             
-                            if current_r > 0:
-                                agent_host.sendCommand("quit")
-                else:
-                    time.sleep(0.1)
-                    world_state = agent_host.getWorldState()
-                    for error in world_state.errors:
-                        self.logger.error("Error: %s" % error.text)
-                            
-                    if world_state.is_mission_running and len(world_state.observations)>0 and not world_state.observations[-1].text=="{}":
-                        self.shots += 1
-                        self.execute_action(agent_host, self.make_action(world_state))
-                        print("current_r",current_r)
-                        obs_text = world_state.observations[-1].text
-                        obs = json.loads(obs_text)
-                        total_discounted_reward += (gamma ** i) * self.updateQTable(current_r,obs)
-                        self.prev_s = self.current_state
+                            if world_state.number_of_rewards_since_last_state > 0:
+                                current_r = sum(reward.getValue() for reward in world_state.rewards)
+                                print("current reward:",current_r)
+                                
+                            total_discounted_reward += (gamma ** i) * self.updateQTable(current_r)
+                            break
+                                
+                else:              
+                    while True: 
+                        time.sleep(0.1)
                         world_state = agent_host.getWorldState()
-                        print(world_state.rewards)
-                        for reward in world_state.rewards:
-                            print("rewards",reward.getValue())
-                            current_r += reward.getValue()
-                        if current_r > 0:
-                            agent_host.sendCommand("quit")
-                       
-            agent_host.sendCommand("quit")
-        return total_discounted_reward     
+                        for error in world_state.errors:
+                            self.logger.error("Error: %s" % error.text)
+                        
+                        if world_state.is_mission_running and len(world_state.observations)>0 and not world_state.observations[-1].text=="{}":
+                            self.shots += 1
+                            world_state = self.get_recent_obs()
+                            if self.target_info == None:
+                                return (self.shots,total_discounted_reward)
+                            time.sleep(0.1)
+                            self.execute_action(agent_host, self.make_action(world_state))             
+                            world_state = self.get_recent_obs()
+                            if world_state.number_of_rewards_since_last_state > 0:
+                                current_r = sum(reward.getValue() for reward in world_state.rewards)
+                            total_discounted_reward += (gamma ** i) * self.updateQTable(current_r)
+                            self.prev_s = self.current_state
+                            break
+        
+                if current_r > 0:
+                    num_of_hits += 1
+                    print("current reward:",current_r)
+                    print("num_of_hits",num_of_hits)
+                
+                
+                        
+            return (30,total_discounted_reward)
            
 # More interesting generator string: "3;7,44*49,73,35:1,159:4,95:13,35:13,159:11,95:10,159:14,159:6,35:6,95:6;12;"
 def drawrailline(x1, z1, x2, z2, y):
@@ -521,14 +521,14 @@ my_mission_2 = MalmoPython.MissionSpec(missionXML_2, True)
 agent = ArcherEnv(my_mission)
 num_of_repeats = 50
 cumulative_rewards = []
+total_shots = 0
 # Attempt to start a mission:
 max_retries = 3
+target_dead = False
 for i in range(num_of_repeats):
-    print()
-    print('Repeat %d of %d' % ( i+1, num_of_repeats ))
     for retry in range(max_retries):
         try:
-            if i == 0:
+            if i == 0 or target_dead:
                 agent_host.startMission( my_mission, my_mission_record )
             else:
                 agent_host.startMission( my_mission_2, my_mission_record )
@@ -549,28 +549,43 @@ for i in range(num_of_repeats):
         world_state = agent_host.getWorldState()
         for error in world_state.errors:
             print("Error:",error.text)
-    while world_state.has_mission_begun and target_info == None:        
-        world_state = agent_host.getWorldState()
-        if len(world_state.observations)>0 and not world_state.observations[-1].text=="{}":
-            msg = world_state.observations[-1].text
-            obs = json.loads(msg)
-            for info in obs[u'entities']:
-                if info[u'name'] == u'Pig':
-                    target_info = info            
-                    break;
    
-    print("target_info",target_info)        
+            
+    
+    print()
+    print('Repeat %d of %d' % ( i+1, num_of_repeats ))
+
+    #print("target_info",target_info)        
     eta = max(min_lr,lr * (0.85 ** (i//100)))
-    epsilon -= 0.01 * i
-    cumulative_reward = agent.run(agent_host)
+    if epsilon > 0:
+        epsilon -= 0.01 * i
+    num_of_shots,cumulative_reward = agent.run(agent_host)
+    total_shots += num_of_shots
+    print("total shots:",total_shots)
+    print("num of hits",num_of_hits)
+    if total_shots != 0:
+        print('Accurancy: {}%'.format(round((num_of_hits/total_shots),3) * 100))
     print('Cumulative reward: %d' % cumulative_reward)
     cumulative_rewards += [ cumulative_reward ]
     agent.reset()
+    
+    while True:
+        world_state = agent_host.getWorldState()
+        if world_state.number_of_observations_since_last_state > 0:
+            obs_text = world_state.observations[-1].text
+            obs = json.loads(obs_text)
+            target_dead = True
+            for info in obs[u'entities']:
+                if info[u'name'] == u'Pig':
+                    target_dead = False
+                    break
+            break
+ 
+    time.sleep(0.1)
+    agent_host.sendCommand("quit")
     time.sleep(1)
 
 print("total episodes reward:",cumulative_rewards)
-print("Mission running ", end=' ')
-
 
 # Loop until mission ends:
 # agent_host.sendCommand("turn -1")
