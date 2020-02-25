@@ -43,7 +43,7 @@ else:
 gamma = 1.0
 lr = 1.0
 min_lr = 0.002
-epsilon = 0.4
+epsilon = 0.6
 max_vertical_degree = 20
 max_horizontal_degree = 180
 max_power = 10
@@ -82,9 +82,9 @@ class ArcherEnv(object):
         
         self.trans = defaultdict(lambda: defaultdict(float)) # transition probability distribution 
     def reset(self):
-        self.current_state = self.first_state
+        self.current_state = None
         self.shots = 0
-        self.prev_s = None
+        self.prev_s = self.first_state
         
     def updateQTable(self,reward):
 
@@ -109,15 +109,12 @@ class ArcherEnv(object):
         print("updating",self.prev_s)
         print("degree",self.prev_degree)
             #print('self.degree in updateQtable',self.degree)
+        
         self.Qtable[self.prev_s][self.prev_degree] =  self.Qtable[self.prev_s][self.prev_degree] + eta * \
                                                     (r + gamma * max(self.Qtable[self.current_state].values()) - self.Qtable[self.prev_s][self.prev_degree])
-#         else:
-#             #print('self.degree in updateQtable',self.degree)
-#             self.first_action = False
-#             self.first_state = self.current_state
-#             self.Qtable[self.current_state][self.degree] = 0 + eta * (r + gamma * max(self.Qtable[self.current_state].values())) - 0
+                                                    
 
-        self.__debuginfo__()
+        #self.__debuginfo__()
 
         return r
             
@@ -163,11 +160,11 @@ class ArcherEnv(object):
         adj_block_down = (float(self.recent_arrow_info[u'x']) + 1.0, float(self.recent_arrow_info[u'z']) )
         adj_block_up = (float(self.recent_arrow_info[u'x']) - 1.0, float(self.recent_arrow_info[u'z']) )
         
-        dis_r = math.sqrt( ( pow((target_x - adj_block_right[0]),2) + pow((target_y - adj_block_right[1]),2) ) ) + float(self.recent_arrow_info[u'y'])
-        dis_l = math.sqrt( ( pow((target_x - adj_block_left[0]),2) + pow((target_y - adj_block_left[1]),2) ) ) + float(self.recent_arrow_info[u'y'])
-        dis_up = math.sqrt( ( pow((target_x - adj_block_up[0]),2) + pow((target_y - adj_block_up[1]),2) ) ) + float(self.recent_arrow_info[u'y'])
-        dis_down = math.sqrt( ( pow((target_x - adj_block_down[0]),2) + pow((target_y - adj_block_down[1]),2) ) ) + float(self.recent_arrow_info[u'y'])
-        arrow_to_target = math.sqrt( ( pow((target_x - recent_arrow_pos[0]),2) + pow((target_y - recent_arrow_pos[1]),2) ) ) + float(self.recent_arrow_info[u'y'])
+        dis_r = math.sqrt( ( pow((target_x - adj_block_right[0]),2) + pow((target_y - adj_block_right[1]),2) ) ) 
+        dis_l = math.sqrt( ( pow((target_x - adj_block_left[0]),2) + pow((target_y - adj_block_left[1]),2) ) ) 
+        dis_up = math.sqrt( ( pow((target_x - adj_block_up[0]),2) + pow((target_y - adj_block_up[1]),2) ) ) 
+        dis_down = math.sqrt( ( pow((target_x - adj_block_down[0]),2) + pow((target_y - adj_block_down[1]),2) ) )
+        arrow_to_target = math.sqrt( ( pow((target_x - recent_arrow_pos[0]),2) + pow((target_y - recent_arrow_pos[1]),2) ) ) 
         
         blocks = {"right":dis_r, "left":dis_l, "up": dis_up, "down": dis_down}
         close_block = min(blocks, key=blocks.get)
@@ -179,15 +176,14 @@ class ArcherEnv(object):
         degree = []
         res = []
         degree_factor = 0
-                        
-        if self.first_action or (random.uniform(0,1) < epsilon):
-            self.current_state = (int(self.target_info[u'x']),int(self.target_info[u'z']))
+        #new_state = (int(self.target_info[u'x']),int(self.target_info[u'z']))
+        self.current_state = "Arrow_{}".format(self.shots)
+        if self.first_action or (random.uniform(0,1) < epsilon):         
             s = np.zeros(3)
             s[1] = random.randint(65,110)
             s[0] = random.randint(1,7) 
             s[2] = 10   
             self.action = self.action_selection[random.randint(0,len(self.action_selection) - 2)]
-            
             print("current state:",self.current_state)
             #if(self.current_state not in self.Qtable.keys()):
             self.degree = "{}:{}:{}:{}".format(s[0],s[1],s[2],self.action)
@@ -201,6 +197,9 @@ class ArcherEnv(object):
             return s
         else:
             print("self.previous_state",self.prev_s)
+            for k,v in self.Qtable[self.prev_s].items():
+                print("{} -> {}".format(k,v))
+            self.current_state = self.current_state = (int(self.target_info[u'x']),int(self.target_info[u'z']))
             lis = [key for key in self.Qtable[self.prev_s].keys() if self.Qtable[self.prev_s][key] == max(self.Qtable[self.prev_s].values())]
             best_action = np.random.choice(lis)
             l = best_action.split(":")
@@ -224,7 +223,7 @@ class ArcherEnv(object):
               
             
             
-            self.current_state = "Arrow_{}".format(self.shots)
+            
             self.degree = "{}:{}:{}:{}".format(prev_degree[0],prev_degree[1],prev_degree[2],self.action)
             print("From Qtable:",self.degree)            
     
@@ -243,7 +242,7 @@ class ArcherEnv(object):
                 self.logger.debug(obs)
                 
                 for info in obs[u'entities']:
-                    if info[u'name'] == u'Pig':
+                    if info[u'name'] == u'Villager':
                         self.target_info = info
                         break
                     else:
@@ -256,9 +255,9 @@ class ArcherEnv(object):
                 #print(self.agent_info)
                 if obs[u'entities'][-1]['name'] == u'Arrow':
                     self.recent_arrow_info = obs[u'entities'][-1]
-                    print()
-                    print("Recent {}:({}, {})".format(self.recent_arrow_info[u'name'],self.recent_arrow_info[u'x'],self.recent_arrow_info[u'z']))
-                    print()
+                    #print()
+                    #print("Recent {}:({}, {})".format(self.recent_arrow_info[u'name'],self.recent_arrow_info[u'x'],self.recent_arrow_info[u'z']))
+                    #print()
                 break
            
         
@@ -277,7 +276,7 @@ class ArcherEnv(object):
         agent_host.sendCommand("use 1")
         time.sleep(commands[2] / 10)
         agent_host.sendCommand("use 0")
-        time.sleep(0.5)
+        time.sleep(0.1)
         
     def run(self, agent_host):
         total_discounted_reward = 0
@@ -304,10 +303,14 @@ class ArcherEnv(object):
                             self.execute_action(agent_host, self.make_action(world_state))
                             time.sleep(0.1)
                             world_state = self.get_recent_obs()
-
+                            
                             if world_state.number_of_rewards_since_last_state > 0:
-                                current_r = sum(reward.getValue() for reward in world_state.rewards)
+                                num_of_reward = [reward.getValue() for reward in world_state.rewards]
+                                current_r = num_of_reward[-1]
                                 print("current reward:",current_r)
+                            if self.first_action:
+                                self.first_state = self.current_state
+                                self.first_action = False    
                             break
                                 
                 else:              
@@ -411,7 +414,7 @@ def random_pos():
     i = random.randint(0,len(L)-1)
     x,z = L[0]
     print("target pos: ({}, {})".format(x,z))
-    return '<DrawEntity x="'+str(x)+'" y="57" z="' + str(z) + '" type="Pig" />'
+    return '<DrawEntity x="'+str(x)+'" y="57" z="' + str(z) + '" type="Villager" />'
     
 missionXML='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
             <Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -460,7 +463,7 @@ missionXML='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
                      <Range name="entities" xrange="60" yrange="40" zrange="60"/>
                   </ObservationFromNearbyEntities>
                   <RewardForDamagingEntity>
-                      <Mob type ="Pig" reward="10"/>
+                      <Mob type ="Villager" reward="10"/>
                   </RewardForDamagingEntity>
                   <ChatCommands />
                   <MissionQuitCommands quitDescription="give_up"/>
@@ -490,7 +493,7 @@ my_mission_record = MalmoPython.MissionRecordSpec()
 #my_mission_record = MalmoPython.MissionRecordSpec()
 
 agent = ArcherEnv()
-num_of_repeats = 150
+num_of_repeats = 500
 cumulative_rewards = []
 result = {'0-50':0,'51-100':0,'101-149':0}
 total_shots = 0
@@ -523,35 +526,31 @@ for i in range(num_of_repeats):
         for error in world_state.errors:
             print("Error:",error.text)
    
-            
-    
     print()
     print('Repeat %d of %d' % ( i+1, num_of_repeats ))
 
     #print("target_info",target_info)        
     eta = max(min_lr,lr * (0.85 ** (i//100)))
-    if epsilon > 0:
-        epsilon -= 0.004 * i
     num_of_shots,cumulative_reward = agent.run(agent_host)
     total_shots += num_of_shots
     print("total shots:",total_shots)
     print("num of hits",num_of_hits)
     if total_shots != 0:
         print('Accurancy: {}%'.format(round((num_of_hits/total_shots),3) * 100))
-        
-    if i <= 50:
-        result['0-100'] = round((num_of_hits/total_shots),3) * 100
-    elif i > 50 and i <= 100:
-        result['51-100'] = round((num_of_hits/total_shots),3) * 100
-    elif i > 100:
-        result['101-149'] = round((num_of_hits/total_shots),3) * 100
+    epsilon -= 0.001
+    if i <= 300:
+        result['0-300'] = round((num_of_hits/total_shots),3) * 100
+    elif i > 300 and i <= 400:
+        result['301-400'] = round((num_of_hits/total_shots),3) * 100
+    elif i > 400:
+        result['401-500'] = round((num_of_hits/total_shots),3) * 100
     
     print('Cumulative reward: %d' % cumulative_reward)
     cumulative_rewards += [ cumulative_reward ]
     agent.reset()
     
     
-    if i == 50 or i == 100:
+    if i == 300 or i == 400:
         total_shots = 0
         num_of_hits = 0
      
