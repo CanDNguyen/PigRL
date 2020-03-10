@@ -556,9 +556,9 @@ my_mission_record = MalmoPython.MissionRecordSpec()
 #my_mission_record = MalmoPython.MissionRecordSpec()
 # 67,108,7,18
 agent = ArcherEnv(0,360,5)
-num_of_repeats = 600
+num_of_repeats = 900
 cumulative_rewards = []
-result = {'0-199':0,'200-399':0,'400-599':0}
+result = {'0-299':0,'300-599':0,'600-899':0}
 total_shots = 0
 # Attempt to start a mission:
 max_retries = 3
@@ -642,23 +642,23 @@ for i in range(num_of_repeats):
         print('Accurancy: {}%'.format(round((num_of_hits/total_shots),3) * 100))
         
     
-    if i <= 199:
-        result['0-199'] = round((num_of_hits/total_shots),3) * 100
-    elif i >= 200 and i <= 399:
-        result['200-399'] = round((num_of_hits/total_shots),3) * 100
-    #elif i > 399:
-    #    result['400-599'] = round((num_of_hits/total_shots),3) * 100
+    if i == 299:
+        result['0-299'] = round((num_of_hits/total_shots),3) * 100
+    elif i == 599:
+        result['300-599'] = round((num_of_hits/total_shots),3) * 100
+    elif i == 899:
+        result['600-899'] = round((num_of_hits/total_shots),3) * 100
     print("epsilon=",epsilon)
     print('Cumulative reward: %d' % cumulative_reward)
     cumulative_rewards += [ cumulative_reward ]
     agent.reset()
     
-    if i == 199:
+    if i == 299:
         epsilon = 0.4
         hit_or_miss.append((num_of_hits,total_shots))
         total_shots = 0
         num_of_hits = 0
-    elif i == 399:
+    elif i == 599:
         epsilon = 0.2
         hit_or_miss.append((num_of_hits,total_shots))
         total_shots = 0
@@ -675,9 +675,9 @@ agent.output_Q_table()
 for k,v in result.items():
     print("At game {} -> accuracy: {}%".format(k,v))
 if len(hit_or_miss) > 0:
-    print("action 0-6000:\nhit:{}\nmiss:{}\ntotal:{}".format(hit_or_miss[0][0],hit_or_miss[0][1]-hit_or_miss[0][0],hit_or_miss[0][1]))
-    print("action 6000-12000:\nhit:{}\nmiss:{}\ntotal:{}".format(hit_or_miss[1][0],hit_or_miss[1][1]-hit_or_miss[1][0],hit_or_miss[1][1]))
-    print("action 12000-18000:\nhit:{}\nmiss:{}\ntotal:{}".format(hit_or_miss[2][0],hit_or_miss[2][1]-hit_or_miss[2][0],hit_or_miss[2][1]))
+    print("action 0-9000:\nhit:{}\nmiss:{}\ntotal:{}".format(hit_or_miss[0][0],hit_or_miss[0][1]-hit_or_miss[0][0],hit_or_miss[0][1]))
+    print("action 9000-18000:\nhit:{}\nmiss:{}\ntotal:{}".format(hit_or_miss[1][0],hit_or_miss[1][1]-hit_or_miss[1][0],hit_or_miss[1][1]))
+    print("action 18000-27000:\nhit:{}\nmiss:{}\ntotal:{}".format(hit_or_miss[2][0],hit_or_miss[2][1]-hit_or_miss[2][0],hit_or_miss[2][1]))
 # Loop until mission ends:
 # agent_host.sendCommand("turn -1")
 # time.sleep(0.1)
