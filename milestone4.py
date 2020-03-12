@@ -230,7 +230,7 @@ class ArcherEnv(object):
             agent_host.sendCommand("setYaw {}".format(v[0]))
             agent_host.sendCommand("hotbar.3 1")
             agent_host.sendCommand("hotbar.3 0")
-            for i in range(v[1],68,5):
+            for i in range(v[1],38,5):
                 agent_host.sendCommand("setPitch {}".format(i))
                 agent_host.sendCommand("attack 1")
                 time.sleep(0.1)
