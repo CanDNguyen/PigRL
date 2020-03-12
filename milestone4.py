@@ -51,6 +51,8 @@ max_power = 10
 eta = 0.3
 target_info = None
 num_of_hits = 0
+arrow = 0
+sword = 0
 
 class ArcherEnv(object):
     
@@ -130,16 +132,7 @@ class ArcherEnv(object):
         print("{} at state: {}: {}".format(self.prev_degree, self.prev_s,self.Qtable[self.prev_s][self.prev_degree]))
         #self.Qtable[self.prev_s][self.prev_degree] = (1-eta) * self.Qtable[self.prev_s][self.prev_degree] + eta * \
         #                                            (reward + gamma * max(self.Qtable[self.current_state].values()))
-        if reward > 0 and self.action == "bow":
-            k = self.prev_degree.split(":")
-            k[-1] = "sword"
-            k = "{}:{}:{}".format(k[0],k[1],k[2])
-            print("new key:",k)
-            if k in self.Qtable[self.prev_s].keys() and self.Qtable[self.prev_s][k] == 0:
-                self.Qtable[self.prev_s][k] = self.Qtable[self.prev_s][self.prev_degree] + 3
                                                     
-        
-
         #self.__debuginfo__()
         return reward
             
@@ -171,6 +164,8 @@ class ArcherEnv(object):
     
     def make_action(self, world_state,r):
         
+        global arrow
+        global sword
         self.current_state = (int(self.target_info[u'x']),int(self.target_info[u'z']))
         
             
@@ -186,9 +181,9 @@ class ArcherEnv(object):
                 #for j in range(self.pitch_range[0],self.pitch_range[1]+1):
                 self.Qtable[self.current_state]["{}:{}:{}".format(i,5,"bow")] = 0
                 self.states[self.current_state]["{}:{}:{}".format(i,5,"bow")] = 0
-            for i in range(start,end+1,20):
-                self.Qtable[self.current_state]["{}:{}:{}".format(i,28,"bow")] = 0
-                self.states[self.current_state]["{}:{}:{}".format(i,28,"bow")] = 0
+            for i in range(start,end+1,15):
+                self.Qtable[self.current_state]["{}:{}:{}".format(i,28,"sword")] = 0
+                self.states[self.current_state]["{}:{}:{}".format(i,28,"sword")] = 0
                 
             self.states[self.current_state]['max'] = 0
         
@@ -199,26 +194,15 @@ class ArcherEnv(object):
         if self.first_action or (random.uniform(0,1) < epsilon):                 
             explore = [k for k,v in self.Qtable[self.current_state].items() if v == 0]
             if len(explore) > 0:
-                a = np.random.choice(explore)
-                a = a.split(":")
-                v.append(int(a[0]))
-                v.append(int(a[1]))
-                self.action = a[2]
-                
-                    
+                a = np.random.choice(explore)           
             else:
-                v.append(random.randint(self.yaw_range[0],self.yaw_range[1]))
-                v.append(self.pitch)
+                a = np.random.choice(list(self.Qtable[self.current_state]))
+            a = a.split(":")
+            v.append(int(a[0]))
+            v.append(int(a[1]))
+            self.action = a[2]
             print(v[0],":",v[1])   
-            if d < 3.0 and v[1] == 28:
-                new_key = "{}:{}:{}".format(v[0],v[1],"sword")
-                if new_key not in self.Qtable[self.current_state].keys():
-                    print("add a new sword aciton")
-                    self.Qtable[self.current_state][new_key] = 0
-                if self.action == "":
-                    self.action = self.action_selection[1]
-            else:
-                self.action = self.action_selection[0]
+            
         else: 
             lis = [key for key in self.Qtable[self.current_state].keys() if self.Qtable[self.current_state][key] == max(self.Qtable[self.current_state].values())]
             best_action = np.random.choice(lis)
@@ -228,17 +212,13 @@ class ArcherEnv(object):
             v.append(int(l[0]))
             v.append(int(l[1]))
             self.action = l[2]
-            if d < 3.0 and v[1] == 28:
-                new_key = "{}:{}:{}".format(v[0],v[1],"sword")
-                if new_key not in self.Qtable[self.current_state].keys():
-                    print("add a new sword aciton")
-                    self.Qtable[self.current_state][new_key] = 0
 
-        
-        agent_host.sendCommand("setYaw {}".format(v[0]))
-        agent_host.sendCommand("setPitch {}".format(v[1]))
 
+            
         if self.action == "bow":
+            arrow += 1
+            agent_host.sendCommand("setYaw {}".format(v[0]))
+            agent_host.sendCommand("setPitch {}".format(v[1]))
             agent_host.sendCommand("hotbar.1 1")
             agent_host.sendCommand("hotbar.1 0")
             agent_host.sendCommand("use 1")
@@ -246,11 +226,15 @@ class ArcherEnv(object):
             agent_host.sendCommand("use 0")
         elif self.action == "sword":
             print("using sword")
+            sword += 1
+            agent_host.sendCommand("setYaw {}".format(v[0]))
             agent_host.sendCommand("hotbar.3 1")
             agent_host.sendCommand("hotbar.3 0")
-            agent_host.sendCommand("attack 1")
-            time.sleep(0.1)
-            agent_host.sendCommand("attack 0")
+            for i in range(v[1],68,5):
+                agent_host.sendCommand("setPitch {}".format(i))
+                agent_host.sendCommand("attack 1")
+                time.sleep(0.1)
+                agent_host.sendCommand("attack 0")
         
         self.prev_s = self.current_state
         self.prev_degree = "{}:{}:{}".format(v[0],v[1],self.action)
@@ -496,7 +480,7 @@ def getMyMission():
                       <Weather>clear</Weather>
                     </ServerInitialConditions>
                     <ServerHandlers>
-                      <FlatWorldGenerator generatorString="3;7,56*35:9,36;,biome_1"/>
+                      <FlatWorldGenerator generatorString="3;7,56*1:9,36;,biome_1"/>
                       <DrawingDecorator>
                           <DrawCuboid type="air" x1="-9" x2="9" y1="57" y2="59" z1="-9" z2="9"/>
                           '''+draw_fence(9, 58)+'''
@@ -592,7 +576,7 @@ for i in range(num_of_repeats):
         
     print()
     print('Repeat %d of %d' % ( i+1, num_of_repeats ))
-    #agent_host.sendCommand("setPitch {}".format(28))
+    agent_host.sendCommand("setPitch {}".format(28))
     while world_state.is_mission_running:
         world_state = agent_host.getWorldState()
         if world_state.number_of_observations_since_last_state > 0:
@@ -622,12 +606,15 @@ for i in range(num_of_repeats):
 #                     for info in obs[u'entities']:
 #                         if info[u'name'] == u'MalmoTutorialBot':
 #                             print(info[u'yaw'],info[u'pitch'])
-#                 time.sleep(0.1)
+#                 agent_host.sendCommand("setYaw {}".format(i))
+#                 time.sleep(1)
 #                 agent_host.sendCommand("hotbar.3 1")
 #                 agent_host.sendCommand("hotbar.3 0")
-#                 agent_host.sendCommand("attack 1")
-#                 time.sleep(0.1)
-#                 agent_host.sendCommand("attack 0")
+#                 for j in range(28,68,10):
+#                     agent_host.sendCommand("setPitch {}".format(j))
+#                     agent_host.sendCommand("attack 1")
+#                     time.sleep(0.5)
+#                     agent_host.sendCommand("attack 0")
 #                 world_state = agent_host.getWorldState()
             break
 
@@ -678,6 +665,8 @@ if len(hit_or_miss) > 0:
     print("action 0-9000:\nhit:{}\nmiss:{}\ntotal:{}".format(hit_or_miss[0][0],hit_or_miss[0][1]-hit_or_miss[0][0],hit_or_miss[0][1]))
     print("action 9000-18000:\nhit:{}\nmiss:{}\ntotal:{}".format(hit_or_miss[1][0],hit_or_miss[1][1]-hit_or_miss[1][0],hit_or_miss[1][1]))
     print("action 18000-27000:\nhit:{}\nmiss:{}\ntotal:{}".format(hit_or_miss[2][0],hit_or_miss[2][1]-hit_or_miss[2][0],hit_or_miss[2][1]))
+print("using sword",sword)
+print("using arrow",arrow)
 # Loop until mission ends:
 # agent_host.sendCommand("turn -1")
 # time.sleep(0.1)
